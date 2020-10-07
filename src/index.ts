@@ -4,6 +4,11 @@ const HOSTNAME = '0.0.0.0';
 const PORT = 8080;
 const EVENT_LISTENER_PATH_PREFIX = '/run/';
 
+const DEBUG = process.env.DEBUG === 'true';
+if (DEBUG) {
+	console.debug('Debug logging is enabled');
+}
+
 const DOCKER_HUB_SECRET = process.env.DOCKER_HUB_SECRET;
 if (DOCKER_HUB_SECRET === undefined) {
 	console.error('The environment variable: "DOCKER_HUB_SECRET" is not set. Killing Application ');
@@ -139,6 +144,10 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
 	const body: string = await getBody(req);
 	res.setHeader('Content-Type', 'application/json');
 
+	if (DEBUG) {
+		console.debug('Received call with body: ' + body);
+	}
+
 	if (!isEventListenerPathValid(req.headers['eventlistener-request-url'])) {
 		res.statusCode = 400;
 		console.error('The specified eventListener path was incorrect. url: ' + req.headers['eventlistener-request-url']);
@@ -154,8 +163,14 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
 		return;
 	}
 
+	const response = JSON.stringify(parsedBody.data);
+
+	if (DEBUG) {
+		console.debug('Sending response. response: ' + response);
+	}
+
 	res.statusCode = 200;
-	res.end(JSON.stringify(parsedBody.data));
+	res.end(response);
 });
 
 server.listen(PORT, HOSTNAME, () => {

@@ -6,7 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "tslint --project tsconfig.json",
-    "start": "tsc && DOCKER_HUB_SECRET=TEST_SECRET node dist/index.js",
+    "start": "tsc && DOCKER_HUB_SECRET=TEST_SECRET DEBUG=true node dist/index.js",
     "build": "tsc"
   },
   "keywords": [],
