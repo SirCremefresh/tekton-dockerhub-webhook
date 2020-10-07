@@ -1,4 +1,5 @@
 import {createServer, IncomingMessage, ServerResponse} from 'http';
+import {DockerHubWebhookData, DockerHubWebhookDataRaw} from './docker-hub-webhook-data.model';
 
 const HOSTNAME = '0.0.0.0';
 const PORT = 8080;
@@ -23,44 +24,6 @@ function isEventListenerPathValid(path: string | string[] | undefined): boolean 
 	}
 	return path.slice(EVENT_LISTENER_PATH_PREFIX.length) === DOCKER_HUB_SECRET;
 }
-
-interface DockerHubWebhookDataRaw {
-	push_data?: {
-		pushed_at?: unknown,
-		images?: unknown[],
-		tag?: unknown,
-		pusher?: unknown
-	},
-	callback_url?: unknown,
-	repository?: {
-		status?: unknown,
-		description?: unknown,
-		is_trusted?: unknown,
-		full_description?: unknown,
-		repo_url?: unknown,
-		owner?: unknown,
-		is_official?: unknown,
-		is_private?: unknown,
-		name?: unknown,
-		namespace?: unknown,
-		star_count?: unknown,
-		comment_count?: unknown,
-		date_created?: unknown,
-		dockerfile?: unknown,
-		repo_name?: unknown
-	}
-}
-
-interface DockerHubWebhookData {
-	callbackUrl: string,
-	repoUrl: string,
-	imageName: string,
-	tag: string,
-	name: string,
-	namespace: string,
-	owner: string,
-}
-
 
 function checkAndParseBody(body: string): { ok: true, data: DockerHubWebhookData } | { ok: false, data: string } {
 	let parsedBody;
