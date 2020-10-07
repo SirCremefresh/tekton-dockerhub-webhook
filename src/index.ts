@@ -2,31 +2,160 @@ import {createServer, IncomingMessage, ServerResponse} from 'http';
 
 const HOSTNAME = '0.0.0.0';
 const PORT = 8080;
+const EVENT_LISTENER_PATH_PREFIX = '/run/';
 
 const DOCKER_HUB_SECRET = process.env.DOCKER_HUB_SECRET;
 if (DOCKER_HUB_SECRET === undefined) {
-	console.error("The environment variable: \"DOCKER_HUB_SECRET\" is not set. Killing Application ")
+	console.error('The environment variable: "DOCKER_HUB_SECRET" is not set. Killing Application ');
 	process.exit(1);
+} else {
+	console.info('Secret successfully loaded from environment variable. variable: "DOCKER_HUB_SECRET"');
 }
 
-const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-	const bodyArray: Uint8Array[] = [];
-	req.on('data', (chunk) => {
-		bodyArray.push(chunk);
-	}).on('end', () => {
-		const body: string = Buffer.concat(bodyArray).toString();
+function isEventListenerPathValid(path: string | string[] | undefined): boolean {
+	if (typeof path !== 'string') {
+		return false;
+	}
+	return path.slice(EVENT_LISTENER_PATH_PREFIX.length) === DOCKER_HUB_SECRET;
+}
 
-		res.statusCode = 200;
-		const {method, url} = req;
-		console.log(req.rawHeaders);
-		console.log(req.headers);
-		console.log(method);
-		console.log(url);
-		console.log(body);
-		res.setHeader('Content-Type', 'application/json');
-		res.end('{}');
+interface DockerHubWebhookDataRaw {
+	push_data?: {
+		pushed_at?: unknown,
+		images?: unknown[],
+		tag?: unknown,
+		pusher?: unknown
+	},
+	callback_url?: unknown,
+	repository?: {
+		status?: unknown,
+		description?: unknown,
+		is_trusted?: unknown,
+		full_description?: unknown,
+		repo_url?: unknown,
+		owner?: unknown,
+		is_official?: unknown,
+		is_private?: unknown,
+		name?: unknown,
+		namespace?: unknown,
+		star_count?: unknown,
+		comment_count?: unknown,
+		date_created?: unknown,
+		dockerfile?: unknown,
+		repo_name?: unknown
+	}
+}
+
+interface DockerHubWebhookData {
+	callbackUrl: string,
+	repoUrl: string,
+	imageName: string,
+	tag: string,
+	name: string,
+	namespace: string,
+	owner: string,
+}
+
+
+function checkAndParseBody(body: string): { ok: true, data: DockerHubWebhookData } | { ok: false, data: string } {
+	let parsedBody;
+	try {
+		parsedBody = JSON.parse(body) as DockerHubWebhookDataRaw;
+	} catch (e) {
+		return {ok: false, data: 'could not parse body to Object'};
+	}
+
+
+	let callbackUrl;
+	if (parsedBody.callback_url && typeof parsedBody.callback_url === 'string') {
+		callbackUrl = parsedBody.callback_url;
+	} else {
+		return {ok: false, data: 'The callback_url is not set.'};
+	}
+	let tag;
+	if (parsedBody.push_data?.tag && typeof parsedBody.push_data.tag === 'string') {
+		tag = parsedBody.push_data.tag;
+	} else {
+		return {ok: false, data: 'The push_data.tag is not set.'};
+	}
+	let repoUrl;
+	if (parsedBody.repository?.repo_url && typeof parsedBody.repository.repo_url === 'string') {
+		repoUrl = parsedBody.repository.repo_url;
+	} else {
+		return {ok: false, data: 'The repository.repo_url is not set.'};
+	}
+	let imageName;
+	if (parsedBody.repository?.repo_name && typeof parsedBody.repository.repo_name === 'string') {
+		imageName = parsedBody.repository.repo_name;
+	} else {
+		return {ok: false, data: 'The repository.repo_name is not set.'};
+	}
+	let name;
+	if (parsedBody.repository?.name && typeof parsedBody.repository.name === 'string') {
+		name = parsedBody.repository.name;
+	} else {
+		return {ok: false, data: 'The repository.name is not set.'};
+	}
+	let namespace;
+	if (parsedBody.repository?.namespace && typeof parsedBody.repository.namespace === 'string') {
+		namespace = parsedBody.repository.namespace;
+	} else {
+		return {ok: false, data: 'The repository.namespace is not set.'};
+	}
+	let owner;
+	if (parsedBody.repository?.owner && typeof parsedBody.repository.owner === 'string') {
+		owner = parsedBody.repository.owner;
+	} else {
+		return {ok: false, data: 'The repository.owner is not set.'};
+	}
+
+
+	return {
+		ok: true,
+		data: {
+			callbackUrl,
+			repoUrl,
+			imageName,
+			name,
+			namespace,
+			tag,
+			owner
+		}
+	};
+}
+
+function getBody(req: IncomingMessage): Promise<string> {
+	return new Promise((res) => {
+		const bodyArray: Uint8Array[] = [];
+		req.on('data', (chunk) => {
+			bodyArray.push(chunk);
+		}).on('end', () => {
+			res(Buffer.concat(bodyArray).toString());
+		});
 	});
+}
 
+const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+	const body: string = await getBody(req);
+	res.setHeader('Content-Type', 'application/json');
+
+	if (!isEventListenerPathValid(req.headers['eventlistener-request-url'])) {
+		res.statusCode = 400;
+		console.error('The specified eventListener path was incorrect. url: ' + req.headers['eventlistener-request-url']);
+		res.end(JSON.stringify({status: 'The specified eventListener path was incorrect.'}));
+		return;
+	}
+
+	const parsedBody = checkAndParseBody(body);
+	if (!parsedBody.ok) {
+		res.statusCode = 400;
+		console.error('The Received body could not be parsed. body: ' + body + ', msg: ' + parsedBody.data);
+		res.end(JSON.stringify({status: 'The Received body could not be parsed. msg: ' + parsedBody.data}));
+		return;
+	}
+
+	res.statusCode = 200;
+	res.end(JSON.stringify(parsedBody.data));
 });
 
 server.listen(PORT, HOSTNAME, () => {
