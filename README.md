@@ -1,15 +1,15 @@
 # Tekton Dockerhub webhook
 A server that can be used to validate if the dockerhub webook request is yours and parse the data in your tekton pipeline.  
 To use it add a secret to the webhook path in the dockerhub configuration (https://{your-domain}/run/{secret}). Then run the web server in this repository in your cluster with the env Variable DOCKER_HUB_SECRET set to your secret.
-On your event listener on tekton add an interceptor sample: 
+On your EventListener on tekton add this interceptor sample: 
 ```yaml
 interceptors:
         - webhook:
             objectRef:
               kind: Service
-              name: tekton-dockerhub-webhook
+              name: {{your service name}}
               apiVersion: v1
-              namespace: tekton-dockerhub-webhook
+              namespace: {{the namespace of the service}}
 ```
 
 A sample EventListener could look like this:
