@@ -1,14 +1,127 @@
-# test locally
-## Valid
+# Tekton Dockerhub webhook
+A server that can be used to validate if the dockerhub webook request is yours and parse the data in your tekton pipeline.  
+To use it add a secret to the webhook path in the dockerhub configuration (https://{your-domain}/run/{secret}). Then run the web server in this repository in your cluster with the env Variable DOCKER_HUB_SECRET set to your secret.
+On your event listener on tekton add an interceptor sample: 
+```yaml
+interceptors:
+        - webhook:
+            objectRef:
+              kind: Service
+              name: tekton-dockerhub-webhook
+              apiVersion: v1
+              namespace: tekton-dockerhub-webhook
+```
+
+A sample EventListener could look like this:
+```yaml
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: EventListener
+metadata:
+  name: dockerhub-listener-interceptor
+  namespace: tekton-pipelines
+spec:
+  triggers:
+    - name: dockerhub-listener
+      interceptors:
+        - webhook:
+            objectRef:
+              kind: Service
+              name: tekton-dockerhub-webhook
+              apiVersion: v1
+              namespace: tekton-dockerhub-webhook
+        - cel:
+            filter: "body.tag != \"latest\""
+      bindings:
+        - ref: dockerhub-pr-binding
+      template:
+        name: dockerhub-template
+  serviceAccountName: tekton-trigger-service-account
+---
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerBinding
+metadata:
+  name: dockerhub-pr-binding
+  namespace: tekton-pipelines
+spec:
+  params:
+    - name: callbackUrl
+      value: $(body.callbackUrl)
+    - name: repoUrl
+      value: $(body.repoUrl)
+    - name: imageName
+      value: $(body.imageName)
+    - name: tag
+      value: $(body.tag)
+    - name: name
+      value: $(body.name)
+    - name: namespace
+      value: $(body.namespace)
+    - name: owner
+      value: $(body.owner)
+
+---
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerTemplate
+metadata:
+  name: dockerhub-template
+  namespace: tekton-pipelines
+spec:
+  params:
+    - name: callbackUrl
+    - name: repoUrl
+    - name: imageName
+    - name: tag
+    - name: name
+    - name: namespace
+    - name: owner
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1beta1
+      kind: TaskRun
+      metadata:
+        generateName: bmw12-image-updater-task-run-
+        namespace: tekton-pipelines
+      spec:
+        serviceAccountName: authenticated-service-account
+        taskRef:
+          name: bmw12-image-updater-task
+        params:
+          - name: callbackUrl
+            value: $(tt.params.callbackUrl)
+          - name: repoUrl
+            value: $(tt.params.repoUrl)
+          - name: imageName
+            value: $(tt.params.imageName)
+          - name: tag
+            value: $(tt.params.tag)
+          - name: name
+            value: $(tt.params.name)
+          - name: namespace
+            value: $(tt.params.namespace)
+          - name: owner
+            value: $(tt.params.owner)
+        resources:
+          inputs:
+            - name: chart-repo
+              resourceSpec:
+                type: git
+                params:
+                  - name: revision
+                    value: master
+                  - name: url
+                    value: https://github.com/SirCremefresh/bmw12-cluster.git
+```
+
+## test locally
+### Valid
 curl -v --header "eventlistener-request-url: /run/TEST_SECRET"  --header "Content-Type: application/json" --request POST --data '{"callback_url":"https://example_callback_url.com","push_data":{"tag":"sample_tag"}, "repository": {"repo_url":"sample_repo_url","repo_name":"sample_repo_name","name":"sample_name","namespace":"sample_namespace","owner":"sample_owner"}}' http://localhost:8080/
 
-## Wrong Secret
+### Wrong Secret
 curl -v --header "eventlistener-request-url: /run/WRONG_SECRET"  --header "Content-Type: application/json" --request POST --data '{"callback_url":"https://example_callback_url.com","push_data":{"tag":"sample_tag"}, "repository": {"repo_url":"sample_repo_url","repo_name":"sample_repo_name","name":"sample_name","namespace":"sample_namespace","owner":"sample_owner"}}' http://localhost:8080/
 
-## No Eventlistener Header
+### No Eventlistener Header
 curl -v --header "Content-Type: application/json" --request POST --data '{"callback_url":"https://example_callback_url.com","push_data":{"tag":"sample_tag"}, "repository": {"repo_url":"sample_repo_url","repo_name":"sample_repo_name","name":"sample_name","namespace":"sample_namespace","owner":"sample_owner"}}' http://localhost:8080/
 
-## Wrong Body
+### Wrong Body
 curl -v --header "eventlistener-request-url: /run/TEST_SECRET"  --header "Content-Type: application/json" --request POST --data '{"callback_url":"https://example_callback_url.com","push_data":{"tag":"sample_tag"}, "repository": {"repo_name":"sample_repo_name","name":"sample_name","namespace":"sample_namespace","owner":"sample_owner"}}' http://localhost:8080/
 curl -v --header "eventlistener-request-url: /run/TEST_SECRET"  --header "Content-Type: application/json" --request POST --data '{"callback_url":"https://example_callback_url.com","push_data":{"tag":234}, "repository": {"repo_url":"sample_repo_url","repo_name":"sample_repo_name","name":"sample_name","namespace":"sample_namespace","owner":"sample_owner"}}' http://localhost:8080/
 curl -v --header "eventlistener-request-url: /run/TEST_SECRET"  --header "Content-Type: application/json" --request POST http://localhost:8080/
@@ -16,7 +129,7 @@ curl -v --header "eventlistener-request-url: /run/TEST_SECRET"  --header "Conten
 
 
 
-# Sample Request from tekton pipeline
+## Sample Request from tekton pipeline
 replace __key__ with real key  
 
 {
